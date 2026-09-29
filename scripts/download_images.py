@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import concurrent.futures
+import datetime
+import hashlib
 import json
 import ssl
 import time
@@ -38,7 +40,7 @@ def main() -> None:
         else:
             rel = path.lstrip("/")
             url = f"{BASE}/{rel}"
-        
+
         # If relative path starts with 'images/', strip it to put into OUT (which is images_org)
         clean_rel = rel[7:] if rel.startswith("images/") else rel
         dest = OUT / clean_rel
@@ -83,6 +85,27 @@ def main() -> None:
     print(f"Done in {time.time() - started:.1f}s: ok={ok}, cached/skipped={skip}, failed={fail}")
     for item in failures:
         print("  FAIL:", item)
+
+    # Build manifest
+    manifest_entries: list[dict[str, object]] = []
+    for p in sorted(OUT.rglob("*")):
+        if p.is_file() and p.name != "manifest.json":
+            rel_path = p.relative_to(OUT).as_posix()
+            data = p.read_bytes()
+            manifest_entries.append({
+                "path": rel_path,
+                "bytes": len(data),
+                "sha256": hashlib.sha256(data).hexdigest()
+            })
+
+    manifest = {
+        "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "total_images": len(manifest_entries),
+        "images": manifest_entries
+    }
+    manifest_path = OUT / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    print(f"Wrote manifest with {len(manifest_entries)} images to {manifest_path}")
 
 
 if __name__ == "__main__":
