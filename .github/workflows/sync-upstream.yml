@@ -1,0 +1,51 @@
+name: Sync Upstream & Archive Images
+
+on:
+  schedule:
+    - cron: '0 6 * * 1' # Every Monday at 6:00 UTC
+  workflow_dispatch:      # Manual trigger anytime
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge Upstream
+        run: |
+          git remote add upstream https://github.com/andenacitelli/credit-card-bonuses-api.git || true
+          git fetch upstream master
+          git merge upstream/master -m "chore: sync upstream master" --no-edit || {
+            echo "Merge conflict detected; aborting merge"
+            git merge --abort
+            exit 1
+          }
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Download & Archive Images
+        run: python3 scripts/download_images.py
+
+      - name: Commit & Push Changes
+        run: |
+          git add exports/ images_org/
+          if git diff --staged --quiet; then
+            echo "No new data or images found."
+          else
+            git commit -m "chore: update catalog data and archive new card images [skip ci]"
+            git push origin master
+          fi
